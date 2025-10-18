@@ -123,7 +123,7 @@ export default function KBListPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // note: hooks deps rule disabled project-wide
   }, [q, status, page]);
 
   // perfil

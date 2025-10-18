@@ -149,7 +149,7 @@ export default function TicketsPage() {
   useEffect(() => {
     const unsub = subscribeTickets(() => load());
     return () => { unsub(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, []);
 
   const lists = useMemo(() => ({
@@ -165,7 +165,7 @@ export default function TicketsPage() {
     if (!selected || !current.some(t => t.id === selected.id)) {
       setSelected(current[0] ?? null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, [category, tickets]);
 
   // Scroll to detail on selection change
@@ -182,7 +182,7 @@ export default function TicketsPage() {
       try { detailHeadingRef.current?.focus(); } catch {}
     }, 250);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, [selected?.id]);
 
   return (

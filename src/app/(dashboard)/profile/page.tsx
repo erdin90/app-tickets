@@ -243,7 +243,6 @@ function ProfileContent() {
           <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: 14, alignItems: 'center' }}>
             <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: '#eef2ff', display: 'grid', placeItems: 'center', fontWeight: 700, color: '#1f2937' }}>
               {profile.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={profile.avatar_url} alt={name || meEmail} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <span style={{ fontSize: 24 }}>{(name || meEmail || 'U').slice(0,1).toUpperCase()}</span>

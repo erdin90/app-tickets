@@ -55,7 +55,7 @@ function BoardContent() {
 
   useEffect(() => {
     fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, [showCompleted, q]);
 
   const byStatus = useMemo(() => {

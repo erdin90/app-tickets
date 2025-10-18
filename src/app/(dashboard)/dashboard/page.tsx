@@ -1,5 +1,5 @@
 'use client';
-/* eslint-disable @next/next/no-img-element */
+/* note: rule disabled project-wide; removing file-level disable */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
@@ -676,7 +676,7 @@ function resetFilters() {
   /* --------- primera carga --------- */
   useEffect(() => {
     refetchList(); refetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // note: hooks deps rule disabled project-wide
   }, []);
 
   // Mantener 'tab' (activos/completados) en sincronía con la categoría
@@ -684,7 +684,7 @@ function resetFilters() {
     setTab(category === 'completed' ? 'completed' : 'active');
     setPage(1);
     refetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // note: hooks deps rule disabled project-wide
   }, [category]);
 
   // Recalcular métricas cuando se cargue el usuario o cambie el rol relevante
@@ -728,7 +728,7 @@ function resetFilters() {
       supabase.removeChannel(chAssignees);
       supabase.removeChannel(chComments);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // note: hooks deps rule disabled project-wide
   }, [tab, q, page, pageSize, priorityFilter, assignedFilter, dueFilter]);
 
   /* --------- debounce de búsqueda --------- */
@@ -740,7 +740,7 @@ function resetFilters() {
   /* --------- refetch cuando cambian filtros --------- */
   useEffect(() => {
     refetchList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // note: hooks deps rule disabled project-wide
   }, [tab, q, page, pageSize, priorityFilter, businessFilter, assignedFilter, dueFilter]);
 
   async function handleCreate() {

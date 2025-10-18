@@ -1,7 +1,7 @@
 'use client';
 import { toast } from 'sonner';
 // src/app/tickets/[id]/page.tsx
-/* eslint-disable @next/next/no-img-element */
+/* note: next image rule disabled project-wide */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -130,7 +130,7 @@ export default function TicketDetailPage() {
     const unsub1 = subscribeTickets(() => load());      // refresca si hay cambios en tickets
     const unsub2 = subscribeComments(id, loadComments); // refresca si hay nuevos comentarios
     return () => { unsub1(); unsub2(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, [id]);
 
   // ===== Acciones =====

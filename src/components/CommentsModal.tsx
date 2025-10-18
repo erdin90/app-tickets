@@ -29,7 +29,7 @@ export default function CommentsModal({
     refetch();
     const unsub = subscribeComments(ticketId, refetch);
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // note: hooks deps rule disabled project-wide
   }, [open, ticketId]);
 
   async function submit() {
