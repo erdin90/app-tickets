@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     }
 
     // 4) Insert ticket
-    const insertPayload: Record<string, any> = {
+  const insertPayload: Record<string, unknown> = {
       title,
       description,
       status: 'open',
@@ -100,8 +100,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ id: data?.id }, { status: 201 });
-  } catch (e: any) {
-    const msg = e?.message || 'Server error';
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Server error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
