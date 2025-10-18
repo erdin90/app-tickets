@@ -14,7 +14,8 @@
     "types:check": "tsc --noEmit",
     "build:clean": "rimraf .next && rimraf node_modules/.cache",
     "stack:report": "node -v && pnpm -v && pnpm list --depth 0",
-    "lint": "eslint"
+    "lint": "eslint",
+    "intake:test": "node ./scripts/test-intake.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.7.0",
