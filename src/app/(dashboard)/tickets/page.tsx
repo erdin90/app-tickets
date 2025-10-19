@@ -147,9 +147,15 @@ export default function TicketsPage() {
       const delta = targetY - startY;
       if (Math.abs(delta) < 2) return resolve();
 
-      // Duración basada en distancia (más lenta y consistente en navegadores)
+      // Si el destino está hacia abajo (scroll down), NO animar (salto inmediato)
+      if (delta > 0) {
+        window.scrollTo({ top: targetY, behavior: 'auto' });
+        return resolve();
+      }
+
+      // Hacia arriba (scroll up): animación más lenta y suave
       const absDist = Math.abs(delta);
-      const duration = Math.max(800, Math.min(1300, absDist * 0.9));
+      const duration = Math.max(1000, Math.min(1700, absDist * 1.25));
       let startTs: number | null = null;
       const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
