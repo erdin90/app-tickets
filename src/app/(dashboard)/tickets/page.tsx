@@ -126,29 +126,48 @@ export default function TicketsPage() {
   const detailRef = useRef<HTMLElement | null>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const HEADER_OFFSET = 96; // altura aproximada del header fijo
+  const rafRef = useRef<number | null>(null);
 
-  // Scroll suave con easing y compensación del header
-  function smoothScrollToDetail(duration = 700) {
-    const el = detailRef.current;
-    if (!el) return;
-    const startY = window.scrollY;
-    const rect = el.getBoundingClientRect();
-    const targetY = startY + rect.top - HEADER_OFFSET - 8; // margen extra
-    const delta = targetY - startY;
-    if (Math.abs(delta) < 4) return;
+  // Scroll suave con easing, offset dinámico y cancelación de animaciones previas
+  function smoothScrollToTarget(target: Element | null, baseExtraOffset = 12): Promise<void> {
+    return new Promise((resolve) => {
+      if (!target) return resolve();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      // Altura dinámica del header sticky principal
+      const header = document.querySelector('header.sticky');
+      const headerHeight = header instanceof HTMLElement ? header.getBoundingClientRect().height : 56;
+      const OFFSET = headerHeight + baseExtraOffset; // compensación total
 
-    let startTs: number | null = null;
-    const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-    function step(ts: number) {
-      if (startTs === null) startTs = ts;
-      const elapsed = ts - startTs;
-      const t = Math.min(1, elapsed / duration);
-      const y = startY + delta * easeInOutCubic(t);
-      window.scrollTo({ top: y, behavior: 'auto' });
-      if (t < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
+      const startY = window.scrollY || window.pageYOffset;
+      const rect = target.getBoundingClientRect();
+      const targetY = startY + rect.top - OFFSET;
+      const delta = targetY - startY;
+      if (Math.abs(delta) < 2) return resolve();
+
+      // Duración basada en distancia (más lenta y consistente en navegadores)
+      const absDist = Math.abs(delta);
+      const duration = Math.max(800, Math.min(1300, absDist * 0.9));
+      let startTs: number | null = null;
+      const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+      const step = (ts: number) => {
+        if (startTs === null) startTs = ts;
+        const elapsed = ts - startTs;
+        const t = Math.min(1, elapsed / duration);
+        const y = startY + delta * easeInOutCubic(t);
+        window.scrollTo({ top: y, behavior: 'auto' });
+        if (t < 1) {
+          rafRef.current = requestAnimationFrame(step);
+        } else {
+          rafRef.current = null;
+          resolve();
+        }
+      };
+      rafRef.current = requestAnimationFrame(step);
+    });
   }
 
   async function load() {
@@ -198,11 +217,15 @@ export default function TicketsPage() {
   // Scroll to detail on selection change
   useEffect(() => {
     if (!selected) return;
-    // Scroll controlado con offset
-    try { smoothScrollToDetail(750); } catch {}
-    // Después del scroll, enfocar el título
-    const id = window.setTimeout(() => { try { detailHeadingRef.current?.focus(); } catch {} }, 800);
-    return () => window.clearTimeout(id);
+    // Objetivo: el heading del detalle (más preciso que la sección)
+    let cancelled = false;
+    smoothScrollToTarget(detailHeadingRef.current ?? detailRef.current, 14)
+      .then(() => {
+        if (!cancelled) {
+          try { detailHeadingRef.current?.focus(); } catch {}
+        }
+      });
+    return () => { cancelled = true; };
   // note: hooks deps rule disabled project-wide
   }, [selected?.id]);
 
@@ -225,7 +248,7 @@ export default function TicketsPage() {
           ).map(tab => (
             <button
               key={tab.key}
-              onClick={() => { setCategory(tab.key); setTimeout(() => smoothScrollToDetail(700), 60); }}
+              onClick={() => { setCategory(tab.key); }}
               className={`text-sm px-3 py-1.5 rounded-full transition ${
                 category===tab.key
                   ? 'bg-white shadow-sm text-neutral-900'
