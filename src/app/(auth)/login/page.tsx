@@ -41,7 +41,7 @@ export default function LoginPage() {
       {/* Card centrada sobre la línea de color (desktop) */}
       <section className="split-right" aria-hidden />
 
-      <form className="login-card center-on-split" onSubmit={onSubmit}>
+      <form className="login-card center-on-right" onSubmit={onSubmit}>
         <label className="field">
           <span className="label">Correo electrónico</span>
           <div className="input-wrap">
