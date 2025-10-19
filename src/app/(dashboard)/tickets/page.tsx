@@ -125,7 +125,6 @@ export default function TicketsPage() {
   const { isPending, isOverdue, isNew, isCompleted } = useClassification();
   const detailRef = useRef<HTMLElement | null>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const skipFocusOnceRef = useRef(false); // evita scroll por focus al cambiar pestaña
   const [isMobile, setIsMobile] = useState(false);
   const rafRef = useRef<number | null>(null);
 
@@ -221,20 +220,8 @@ export default function TicketsPage() {
   // note: hooks deps rule disabled project-wide
   }, [category, tickets]);
 
-  // Scroll to detail on selection change (animation disabled per request)
-  useEffect(() => {
-    if (!selected) return;
-    // Si venimos de un cambio de pestaña, no enfocamos para evitar que el navegador haga scroll automático
-    if (skipFocusOnceRef.current) {
-      skipFocusOnceRef.current = false;
-      return;
-    }
-    // Sin animación: si el heading existe, solo hacemos focus (para contexto)
-    try { detailHeadingRef.current?.focus(); } catch {}
-    // Si prefieres centrar sin animación, podríamos: window.scrollTo({ top: ... })
-    // pero lo dejamos sin movimiento para no molestar.
-  // note: hooks deps rule disabled project-wide
-  }, [selected?.id]);
+  // En selección: sin scroll y sin focus (por solicitud del usuario)
+  useEffect(() => { /* no-op */ }, [selected?.id]);
 
   return (
     <TicketsShell>
@@ -255,7 +242,7 @@ export default function TicketsPage() {
           ).map(tab => (
             <button
               key={tab.key}
-              onClick={() => { skipFocusOnceRef.current = true; setCategory(tab.key); }}
+              onClick={() => { setCategory(tab.key); }}
               className={`text-sm px-3 py-1.5 rounded-full transition ${
                 category===tab.key
                   ? 'bg-white shadow-sm text-neutral-900'
