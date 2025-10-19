@@ -29,6 +29,34 @@ function getServiceClient() {
   });
 }
 
+function baseDomainFrom(emailOrDomain: string): string {
+  const d = emailOrDomain.includes('@') ? emailOrDomain.split('@')[1] : emailOrDomain;
+  const parts = (d || '').toLowerCase().split('.');
+  if (parts.length <= 2) return parts.join('.');
+  return parts.slice(-2).join('.');
+}
+
+function corsHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Intake-Secret',
+  };
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders() });
+}
+
+export async function GET() {
+  const body = {
+    ok: true,
+    note: 'Use POST to create tickets. This GET is only for health/info.',
+    expects: ['title', 'content', 'requester_email', 'message_id (optional)', 'business_key (optional)'],
+  };
+  return NextResponse.json(body, { status: 200, headers: corsHeaders() });
+}
+
 export async function POST(request: Request) {
   try {
     // 1) Auth by shared secret
@@ -54,11 +82,12 @@ export async function POST(request: Request) {
     // Fallback: mapear dominio->business vía env si no viene business_key
     if (!business && requester_email.includes('@')) {
       try {
-        const domain = requester_email.split('@')[1];
+        const domain = baseDomainFrom(requester_email);
         const mapRaw = process.env.INTAKE_DOMAIN_BUSINESS_MAP || '{}';
         const map = JSON.parse(mapRaw) as Record<string, string>;
         if (map && typeof map === 'object') {
-          business = map[domain] ?? null;
+          const key = Object.keys(map).find(k => k.toLowerCase() === domain);
+          business = key ? map[key] ?? null : null;
         }
       } catch {
         // ignore mapping errors
@@ -109,12 +138,15 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      try { console.error('intake: insert error', { messageId, requester_email, err: error.message }); } catch {}
+      return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders() });
     }
 
-    return NextResponse.json({ id: data?.id }, { status: 201 });
+    try { console.log('intake: insert ok', { id: data?.id, messageId, requester_email, business }); } catch {}
+    return NextResponse.json({ id: data?.id }, { status: 201, headers: corsHeaders() });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Server error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    try { console.error('intake: exception', msg); } catch {}
+    return NextResponse.json({ error: msg }, { status: 500, headers: corsHeaders() });
   }
 }
