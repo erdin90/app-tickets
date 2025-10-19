@@ -220,18 +220,13 @@ export default function TicketsPage() {
   // note: hooks deps rule disabled project-wide
   }, [category, tickets]);
 
-  // Scroll to detail on selection change
+  // Scroll to detail on selection change (animation disabled per request)
   useEffect(() => {
     if (!selected) return;
-    // Objetivo: el heading del detalle (más preciso que la sección)
-    let cancelled = false;
-    smoothScrollToTarget(detailHeadingRef.current ?? detailRef.current, 14)
-      .then(() => {
-        if (!cancelled) {
-          try { detailHeadingRef.current?.focus(); } catch {}
-        }
-      });
-    return () => { cancelled = true; };
+    // Sin animación: si el heading existe, solo hacemos focus (para contexto)
+    try { detailHeadingRef.current?.focus(); } catch {}
+    // Si prefieres centrar sin animación, podríamos: window.scrollTo({ top: ... })
+    // pero lo dejamos sin movimiento para no molestar.
   // note: hooks deps rule disabled project-wide
   }, [selected?.id]);
 
