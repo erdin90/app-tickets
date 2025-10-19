@@ -50,7 +50,20 @@ export async function POST(request: Request) {
     const description = (body.content ?? '').toString();
     const requester_email = (body.requester_email ?? '').toLowerCase();
     const requester_name = body.requester_name?.trim() || null;
-    const business = (body.business_key ?? null) || null; // app usa string code en columna `business`
+  let business = (body.business_key ?? null) || null; // app usa string code en columna `business`
+    // Fallback: mapear dominio->business vía env si no viene business_key
+    if (!business && requester_email.includes('@')) {
+      try {
+        const domain = requester_email.split('@')[1];
+        const mapRaw = process.env.INTAKE_DOMAIN_BUSINESS_MAP || '{}';
+        const map = JSON.parse(mapRaw) as Record<string, string>;
+        if (map && typeof map === 'object') {
+          business = map[domain] ?? null;
+        }
+      } catch {
+        // ignore mapping errors
+      }
+    }
     const receivedAt = body.received_at ? new Date(body.received_at) : new Date();
     const messageId = body.message_id?.trim() || null;
 
@@ -83,7 +96,7 @@ export async function POST(request: Request) {
       business,                 // columna string (códigos)
       requester_email,
       requester_name,
-      source: 'email',
+  source: 'email',          // para diferenciarlo de 'app'
       received_at: receivedAt.toISOString(),
       message_id: messageId,
       created_at: receivedAt.toISOString(),

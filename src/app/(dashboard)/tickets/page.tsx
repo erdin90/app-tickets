@@ -92,6 +92,9 @@ function Detail({ t, headingRef }: { t: Ticket | null; headingRef?: React.RefObj
             {t.priority && (
               <span className="text-[11px] rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-700">{t.priority}</span>
             )}
+            <span className="text-[10px] rounded-full bg-neutral-50 border border-neutral-200 px-2 py-0.5 text-neutral-600">
+              {((t as any)?.source === 'email') ? 'Email' : 'App'}
+            </span>
           </div>
         </div>
       </div>

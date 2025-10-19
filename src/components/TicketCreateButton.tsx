@@ -31,10 +31,13 @@ export default function TicketCreateButton({ onCreated }: Props) {
 
       const { error } = await supabase.from('tickets').insert({
         title: title.trim(),
-        description: desc.trim(),
-        status: 'Abierto',      // ajusta si tu enum usa otros valores
-        assignee: null,
-        created_by: user.id,    // elimina si tu tabla no tiene esta columna
+        description: desc.trim() || null,
+        status: 'open',         // App usa 'open'|'in_progress'|'on_hold'|'completed'
+        priority: 'normal',
+        assigned_to: null,
+        business: null,
+        source: 'app',          // <- diferencia con los tickets creados por email
+        created_by: user.id,    // si no existe la columna en tu tabla, puedes quitarla
       });
 
       if (error) throw error;
