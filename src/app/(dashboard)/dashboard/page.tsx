@@ -551,17 +551,8 @@ useEffect(() => {
   return () => mql.removeEventListener('change', onChange);
 }, []);
 
-// Auto scroll al panel de detalle y enfoque del título cuando cambia la selección
-useEffect(() => {
-  if (!selectedId) return;
-  try {
-    detailPaneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch {}
-  const id = window.setTimeout(() => {
-    try { detailHeadingRef.current?.focus(); } catch {}
-  }, 250);
-  return () => window.clearTimeout(id);
-}, [selectedId]);
+// Sin auto-scroll ni focus al cambiar selección (solicitado por el usuario)
+useEffect(() => { /* no-op */ }, [selectedId]);
 
 useEffect(() => {
   if (!isMobile) {
