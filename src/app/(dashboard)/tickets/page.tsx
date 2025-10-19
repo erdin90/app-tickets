@@ -126,6 +126,30 @@ export default function TicketsPage() {
   const detailRef = useRef<HTMLElement | null>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const HEADER_OFFSET = 96; // altura aproximada del header fijo
+
+  // Scroll suave con easing y compensación del header
+  function smoothScrollToDetail(duration = 700) {
+    const el = detailRef.current;
+    if (!el) return;
+    const startY = window.scrollY;
+    const rect = el.getBoundingClientRect();
+    const targetY = startY + rect.top - HEADER_OFFSET - 8; // margen extra
+    const delta = targetY - startY;
+    if (Math.abs(delta) < 4) return;
+
+    let startTs: number | null = null;
+    const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    function step(ts: number) {
+      if (startTs === null) startTs = ts;
+      const elapsed = ts - startTs;
+      const t = Math.min(1, elapsed / duration);
+      const y = startY + delta * easeInOutCubic(t);
+      window.scrollTo({ top: y, behavior: 'auto' });
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
 
   async function load() {
     setLoading(true);
@@ -174,16 +198,10 @@ export default function TicketsPage() {
   // Scroll to detail on selection change
   useEffect(() => {
     if (!selected) return;
-    // Scroll the detail section into view smoothly
-    if (detailRef.current) {
-      try {
-        detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } catch {}
-    }
-    // After a short delay, focus the heading for context (accessibility)
-    const id = window.setTimeout(() => {
-      try { detailHeadingRef.current?.focus(); } catch {}
-    }, 250);
+    // Scroll controlado con offset
+    try { smoothScrollToDetail(750); } catch {}
+    // Después del scroll, enfocar el título
+    const id = window.setTimeout(() => { try { detailHeadingRef.current?.focus(); } catch {} }, 800);
     return () => window.clearTimeout(id);
   // note: hooks deps rule disabled project-wide
   }, [selected?.id]);
@@ -207,7 +225,7 @@ export default function TicketsPage() {
           ).map(tab => (
             <button
               key={tab.key}
-              onClick={() => setCategory(tab.key)}
+              onClick={() => { setCategory(tab.key); setTimeout(() => smoothScrollToDetail(700), 60); }}
               className={`text-sm px-3 py-1.5 rounded-full transition ${
                 category===tab.key
                   ? 'bg-white shadow-sm text-neutral-900'
@@ -250,7 +268,7 @@ export default function TicketsPage() {
         </aside>
 
         {/* Detalle derecha */}
-        <section ref={detailRef} className="md:col-span-8 lg:col-span-9 rounded-xl border border-neutral-200 bg-white/70 min-h-[360px] scroll-mt-16">
+        <section ref={detailRef} className="md:col-span-8 lg:col-span-9 rounded-xl border border-neutral-200 bg-white/70 min-h-[360px]">
           <Detail t={selected} headingRef={detailHeadingRef} />
         </section>
       </div>

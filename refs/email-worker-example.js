@@ -34,9 +34,10 @@ export default {
       // Map domain to business code if configured
       let business_key = null;
       try {
-        const domain = requester_email.split('@')[1];
+        const domain = (requester_email.split('@')[1] || '').toLowerCase();
         const map = JSON.parse(env.DOMAIN_BUSINESS_MAP || '{}');
-        business_key = map[domain] || null;
+        const key = Object.keys(map).find(k => k.toLowerCase() === domain);
+        business_key = key ? map[key] : null;
       } catch (_) {}
 
       // Compose payload
@@ -51,8 +52,10 @@ export default {
         message_id: messageId || null,
       };
 
+      // Resolve endpoint (accept INTAKE_ENDPOINT or legacy INTAKE_URL)
+      const endpoint = env.INTAKE_ENDPOINT || env.INTAKE_URL;
       // Send to intake API
-      const resp = await fetch(env.INTAKE_ENDPOINT, {
+      const resp = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,6 +68,9 @@ export default {
         // Log and continue; don't bounce email
         const txt = await resp.text().catch(() => '');
         console.error('Intake failed', resp.status, txt);
+      } else {
+        // Optional: minimal success trace
+        console.log('Intake ok', requester_email, messageId);
       }
     } catch (err) {
       console.error('Worker error', err);
