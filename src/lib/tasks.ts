@@ -29,7 +29,7 @@ export function isBusinessDay(d = new Date()) {
 }
 
 export function formatDate(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  return toYMD(d);
 }
 
 export async function getProfilesByNames(names: string[]) {
@@ -150,8 +150,13 @@ export async function getManagerDailyMatrix(date = formatDate()) {
 /* ========= Weekly matrix ========= */
 export type TaskStatus = 'pending' | 'overdue' | 'completed' | 'off';
 
+function parseYMDLocal(s: string) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+}
+
 export function mondayOfWeek(dateStr: string) {
-  const d = new Date(dateStr);
+  const d = parseYMDLocal(dateStr);
   const day = d.getDay();
   const diff = (day === 0 ? -6 : 1 - day); // move to Monday
   const m = new Date(d);
@@ -166,7 +171,12 @@ export function addDays(d: Date, days: number) {
   return x;
 }
 
-export function toYMD(d: Date) { return d.toISOString().slice(0,10); }
+export function toYMD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export type TaskSettings = { cutoff: string }; // 'HH:MM'
 
@@ -407,4 +417,96 @@ export async function validateTaskTitle(title: string, currentKey?: string) {
     if (i > 99) break;
   }
   return { ok: false as const, key, suggestion };
+}
+
+/* ========= Reports: cumplimiento por IT ========= */
+function daysBetweenYMD(startYMD: string, endYMD: string) {
+  const start = parseYMDLocal(startYMD);
+  const end = parseYMDLocal(endYMD);
+  const res: string[] = [];
+  let cur = new Date(start);
+  cur.setHours(0,0,0,0);
+  while (cur <= end) {
+    res.push(toYMD(cur));
+    cur = addDays(cur, 1);
+  }
+  return res;
+}
+
+export async function getTasksComplianceByIT(fromYMD?: string, toYMDStr?: string): Promise<Array<{ id: string; name: string; completed: number; total: number }>> {
+  // Determinar rango por defecto: mes actual si no se provee
+  const now = new Date();
+  const startDefault = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endDefault = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const startYMD = (fromYMD && fromYMD.length) ? fromYMD : toYMD(startDefault);
+  const endYMD = (toYMDStr && toYMDStr.length) ? toYMDStr : toYMD(endDefault);
+
+  const days = daysBetweenYMD(startYMD, endYMD);
+  const defs = await getTaskDefinitionsWithNames();
+  const assigned = defs.filter(d => !!d.user_id);
+  const userIds = Array.from(new Set(assigned.map(d => d.user_id!).filter(Boolean)));
+
+  // Conjunto de claves esperadas user|task|date para validar checks
+  const expectedKeys = new Set<string>();
+  const totalsByUser = new Map<string, number>();
+  for (const d of assigned) {
+    const uid = d.user_id!;
+    for (const ymd of days) {
+      const w = weekdayIndex1to7(ymd);
+      const isActiveDay = Array.isArray(d.weekdays) && d.weekdays?.length
+        ? (d.weekdays as number[]).includes(w)
+        : isBusinessDay(parseYMDLocal(ymd));
+      if (!isActiveDay) continue;
+      expectedKeys.add(`${uid}|${d.key}|${ymd}`);
+      totalsByUser.set(uid, (totalsByUser.get(uid) ?? 0) + 1);
+    }
+  }
+
+  // Traer checks en el rango
+  let checks: DailyCheck[] = [];
+  try {
+    if (userIds.length) {
+      const { data, error } = await supabase
+        .from('it_daily_checks')
+        .select('user_id, task_key, date, completed_at')
+        .gte('date', startYMD)
+        .lte('date', endYMD)
+        .in('user_id', userIds)
+        .limit(50000);
+      if (error) throw error;
+      checks = (data ?? []) as DailyCheck[];
+    }
+  } catch {
+    // Fallback local
+    if (typeof window !== 'undefined') {
+      for (const uid of userIds) {
+        for (const ymd of days) {
+          const raw = localStorage.getItem(`checks:${uid}:${ymd}`) || '[]';
+          checks.push(...(JSON.parse(raw) as DailyCheck[]));
+        }
+      }
+    }
+  }
+
+  const completedByUser = new Map<string, number>();
+  for (const c of checks) {
+    const key = `${c.user_id}|${c.task_key}|${c.date}`;
+    if (!expectedKeys.has(key)) continue; // ignora marcados en días no activos
+    completedByUser.set(c.user_id, (completedByUser.get(c.user_id) ?? 0) + 1);
+  }
+
+  // nombres
+  const names = new Map<string, string>();
+  defs.forEach(d => { if (d.user_id) names.set(d.user_id, d.assigneeName); });
+
+  const result: Array<{ id: string; name: string; completed: number; total: number }> = [];
+  for (const uid of userIds) {
+    result.push({
+      id: uid,
+      name: names.get(uid) ?? uid,
+      completed: completedByUser.get(uid) ?? 0,
+      total: totalsByUser.get(uid) ?? 0,
+    });
+  }
+  return result;
 }

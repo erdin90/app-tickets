@@ -1911,8 +1911,8 @@ html, body { background: var(--bg); color: var(--text); }
 
 /* Drawer móvil: también arranca debajo del banner y permite scroll */
 .drawer-panel{
-  top: var(--banner-h) !important;
-  height: calc(100vh - var(--banner-h)) !important;
+  top: 0 !important;
+  height: 100vh !important;
   overflow:auto; -webkit-overflow-scrolling:touch;
 }
 

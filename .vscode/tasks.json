@@ -41,6 +41,16 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "build (Next.js)",
+			"type": "shell",
+			"command": "pnpm build",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

@@ -70,6 +70,8 @@ export default function KBListPage() {
   const [me, setMe] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Estado para el botón de refresco
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { setPage(1); }, [q]);
 
@@ -107,6 +109,30 @@ export default function KBListPage() {
       }
     });
   }, [q, status, page]);
+
+  async function doFullRefresh() {
+    try {
+      setRefreshing(true);
+      const { data, total } = await listKB({ q, status, page, pageSize: PAGE_SIZE });
+      const sorted = (data ?? []).slice().sort((a, b) => {
+        const da = new Date(a.created_at).getTime();
+        const db = new Date(b.created_at).getTime();
+        return db - da;
+      });
+      setRows(sorted);
+      setTotal(total ?? sorted.length);
+      const ids = Array.from(new Set((sorted ?? []).map(r => r.created_by))).filter(Boolean);
+      if (ids.length) {
+        const { data: users } = await getUsersByIds(ids);
+        const map = Object.fromEntries(users.map(u => [u.id, u.full_name ?? u.id]));
+        setAuthors(map);
+      } else {
+        setAuthors({});
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // realtime: refrescar lista cuando cambian artículos en la tabla
   useEffect(() => {
@@ -375,15 +401,18 @@ export default function KBListPage() {
           <aside className="kb-detail-pane">
             <div className="kb-detail-inner">
               {/* Botón volver solo en móvil */}
-              <button
-                type="button"
-                className="btn"
-                style={{ display: 'none', marginBottom: 8 }}
-                aria-label="Volver a la lista"
-                onClick={() => setSelectedId(null)}
-              >
-                ← Lista
-              </button>
+              {isMobile && selected && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginBottom: 8, width: '100%', justifyContent: 'flex-start', height: 44, fontSize: 16, fontWeight: 800 }}
+                  aria-label="Volver a la lista de artículos"
+                  title="Volver a la lista de artículos"
+                  onClick={() => setSelectedId(null)}
+                >
+                  ← Lista de Artículos
+                </button>
+              )}
 
               {!selected && (
                 <div className="ticket" style={{ textAlign: 'center' }}>
@@ -445,6 +474,41 @@ export default function KBListPage() {
           <label>Contenido<textarea className="input" rows={8} value={editContent} onChange={(e) => setEditContent(e.target.value)} /></label>
         </div>
       </AppModal>
+
+      {/* FAB de refresco para KB */}
+      <button
+        type="button"
+        className={`refresh-fab ${refreshing ? 'is-spinning' : ''}`}
+        title="Actualizar"
+        aria-label="Actualizar"
+        aria-busy={refreshing}
+        onClick={doFullRefresh}
+      >
+        ↻
+      </button>
+
+      <style jsx>{`
+        .refresh-fab{
+          position: fixed;
+          right: 16px;
+          bottom: 16px;
+          width: 46px;
+          height: 46px;
+          border-radius: 999px;
+          background: var(--blue-600);
+          color: #fff;
+          border: none;
+          box-shadow: var(--shadow);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+          z-index: 50;
+        }
+        .refresh-fab:hover{ background: var(--blue-700); }
+        .refresh-fab.is-spinning{ animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </>
   );
 }

@@ -10,6 +10,7 @@ export type TicketComment = {
     id: string;
     full_name: string | null;
     avatar_url: string | null;
+    role?: 'manager' | 'technician' | 'it' | 'client' | null;
   } | null;
 };
 
@@ -44,6 +45,8 @@ function mapRaw(row: RawComment): TicketComment {
           id: String(prof.id ?? ''),
           full_name: (prof.full_name ?? null) as string | null,
           avatar_url: (prof.avatar_url ?? null) as string | null,
+          // @ts-ignore role may be present if requested in select
+          role: (prof as any).role ?? null,
         }
       : null,
   };
@@ -54,7 +57,7 @@ export async function listComments(ticketId: string) {
     .from('ticket_comments')
     .select(`
       id, ticket_id, author, body, created_at,
-      author_profile:profiles ( id, full_name, avatar_url )
+      author_profile:profiles ( id, full_name, avatar_url, role )
     `)
     .eq('ticket_id', ticketId)
     .order('created_at', { ascending: true });
@@ -69,7 +72,7 @@ export async function addComment(ticketId: string, authorId: string, body: strin
     .insert({ ticket_id: ticketId, author: authorId, body })
     .select(`
       id, ticket_id, author, body, created_at,
-      author_profile:profiles ( id, full_name, avatar_url )
+      author_profile:profiles ( id, full_name, avatar_url, role )
     `)
     .single();
 
@@ -87,4 +90,19 @@ export function subscribeComments(ticketId: string, onChange: () => void) {
   );
   channel.subscribe();
   return () => { supabase.removeChannel(channel); };
+}
+
+export async function deleteComment(id: string) {
+  // obtener token actual para autorizar contra el API
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  const res = await fetch(`/api/tickets/comments/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { error: new Error(body?.error || `HTTP ${res.status}`) };
+  }
+  return { error: null as unknown as null };
 }

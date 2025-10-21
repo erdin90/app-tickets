@@ -30,9 +30,88 @@ export default function TasksPage() {
     <>
       {Bar}
       <div className="container" style={{ display: 'grid', gap: 12 }}>
-        <WeeklyMatrix anchorDate={date} currentUserId={userId ?? ''} isManager={isManager} />
+        <ResponsiveTasks anchorDate={date} onAnchorChange={setDate} currentUserId={userId ?? ''} isManager={isManager} />
       </div>
     </>
+  );
+}
+
+function ResponsiveTasks({ anchorDate, onAnchorChange, currentUserId, isManager }: { anchorDate: string; onAnchorChange: (d: string) => void; currentUserId: string; isManager: boolean }){
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 768px)');
+    const on = () => setIsMobile(mql.matches); on();
+    mql.addEventListener('change', on); return () => mql.removeEventListener('change', on);
+  }, []);
+  if (!isMobile) return <WeeklyMatrix anchorDate={anchorDate} currentUserId={currentUserId} isManager={isManager} />;
+  return <MobileTasks anchorDate={anchorDate} onAnchorChange={onAnchorChange} currentUserId={currentUserId} isManager={isManager} />;
+}
+
+function MobileTasks({ anchorDate, onAnchorChange, currentUserId, isManager }: { anchorDate: string; onAnchorChange: (d: string) => void; currentUserId: string; isManager: boolean }){
+  const [days, setDays] = useState<string[]>([]);
+  const [rows, setRows] = useState<Array<{ key: string; title: string; assigneeName: string; user_id?: string; days: Array<{ date: string; status: 'pending'|'overdue'|'completed'|'off'; late?: boolean }> }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [weekAnchor, setWeekAnchor] = useState(anchorDate);
+  const [dayIdx, setDayIdx] = useState(0);
+
+  useEffect(() => { setWeekAnchor(anchorDate); }, [anchorDate]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const { days, rows } = await getWeeklyMatrix(weekAnchor);
+      if (!alive) return;
+      setDays(days);
+      // colocar el índice en el día actual si está dentro de la semana
+      const today = new Date().toISOString().slice(0,10);
+      const idx = Math.max(0, Math.min(6, days.findIndex(d => d === today)));
+      setDayIdx(idx >= 0 ? idx : 0);
+      setRows(rows as any);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [weekAnchor]);
+
+  function prevDay(){ if (dayIdx > 0) setDayIdx(dayIdx - 1); else onAnchorChange(addDays(mondayOfWeek(weekAnchor), -7).toISOString().slice(0,10)); }
+  function nextDay(){ if (dayIdx < 6) setDayIdx(dayIdx + 1); else onAnchorChange(addDays(mondayOfWeek(weekAnchor), 7).toISOString().slice(0,10)); }
+
+  return (
+    <div className="ticket" style={{ padding: 12 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+        <button className="btn" onClick={prevDay}>◀ Anterior</button>
+        <div className="section-title" style={{ margin: 0, fontSize: 18 }}>{days[dayIdx] ?? anchorDate}</div>
+        <button className="btn" onClick={nextDay}>Siguiente ▶</button>
+      </div>
+      {loading ? <div className="meta">Cargando…</div> : (
+        <div style={{ display:'grid', gap:8, marginTop:8 }}>
+          {rows.map((r, i) => {
+            const c = r.days[dayIdx];
+            const canClick = c.status !== 'off' && (r.user_id === currentUserId || isManager);
+            return (
+              <div key={i} className="ticket" style={{ padding: 10, display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:8 }}>
+                <div>
+                  <div style={{ fontWeight:800 }}>{r.title}</div>
+                  <div className="meta">{r.assigneeName}</div>
+                </div>
+                <button
+                  className="btn"
+                  disabled={!canClick || new Date(c.date) > new Date()}
+                  onClick={async () => {
+                    if (!canClick || new Date(c.date) > new Date()) return;
+                    await toggleCheck(r.user_id!, r.key as any, c.date);
+                    const { days, rows } = await getWeeklyMatrix(weekAnchor);
+                    setDays(days); setRows(rows as any);
+                  }}
+                >
+                  {statusPill(c.status)} {c.late && c.status==='completed' ? <span className="badge" style={{ marginLeft:6, background:'#fff7ed', color:'#9a3412', borderColor:'#fed7aa' }}>Tarde</span> : null}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -154,6 +233,7 @@ function WeeklyMatrix({ anchorDate, currentUserId, isManager }: { anchorDate: st
   const [newTask, setNewTask] = useState<{ key?: string; title: string; user_id: string | ''; weekdays: number[] }>({ key: undefined, title: '', user_id: '', weekdays: [1,2,3,4,5] });
   const [openEditor, setOpenEditor] = useState(false);
   const [titleValidation, setTitleValidation] = useState<{ ok: boolean; key: string; suggestion?: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -199,6 +279,9 @@ function WeeklyMatrix({ anchorDate, currentUserId, isManager }: { anchorDate: st
     const isOwner = row.user_id === currentUserId;
     if (!row.user_id || (!isOwner && !canManager)) return; // bloquea usuarios no dueños
     if (cell.status === 'off') return;
+    // Regla: no se puede completar antes del día programado
+    const todayYMD = new Date().toISOString().slice(0,10);
+    if (cell.date > todayYMD) return;
     await toggleCheck(row.user_id, row.key as any, cell.date);
     // refresh in place
     setRows(prev => {
@@ -214,6 +297,16 @@ function WeeklyMatrix({ anchorDate, currentUserId, isManager }: { anchorDate: st
     // refetch to recalculate overdue vs pendiente
     const { days, rows, settings } = await getWeeklyMatrix(weekAnchor);
     setDays(days); setRows(rows as any); updateCutoff(settings.cutoff);
+  }
+
+  async function doFullRefresh() {
+    try {
+      setRefreshing(true);
+      const { days, rows, settings } = await getWeeklyMatrix(weekAnchor);
+      setDays(days); setRows(rows as any); updateCutoff(settings.cutoff);
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   function WeekdaysSelector({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
@@ -298,8 +391,8 @@ function WeeklyMatrix({ anchorDate, currentUserId, isManager }: { anchorDate: st
                         className="btn"
                         style={{ padding: '4px 8px', fontSize: 12, borderRadius: 8, cursor: (c.status !== 'off' && (r.user_id === currentUserId || isManager)) ? 'pointer' : 'default', opacity: (r.user_id === currentUserId || isManager) ? 1 : .75 }}
                         onClick={() => onToggle(i, j)}
-                        disabled={c.status === 'off' || (!isManager && r.user_id !== currentUserId)}
-                        title={(r.user_id === currentUserId || isManager) ? 'Marcar completada' : 'Solo el titular o el manager pueden marcar'}
+                        disabled={c.status === 'off' || (!isManager && r.user_id !== currentUserId) || (new Date(c.date) > new Date())}
+                        title={(new Date(c.date) > new Date()) ? 'No puedes completar antes del día programado' : ((r.user_id === currentUserId || isManager) ? 'Marcar completada' : 'Solo el titular o el manager pueden marcar')}
                       >
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           {statusPill(c.status)}
@@ -316,6 +409,22 @@ function WeeklyMatrix({ anchorDate, currentUserId, isManager }: { anchorDate: st
           </table>
         </div>
       )}
+
+      {/* FAB de refresco para Tasks */}
+      <button
+        type="button"
+        className={`refresh-fab ${refreshing ? 'is-spinning' : ''}`}
+        title="Actualizar"
+        aria-label="Actualizar"
+        aria-busy={refreshing}
+        onClick={doFullRefresh}
+        style={{ position: 'fixed', right: 16, bottom: 16, width: 46, height: 46, borderRadius: 999, background: 'var(--blue-600)', color: '#fff', border: 'none', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, zIndex: 50, animation: refreshing ? 'spin 1s linear infinite' as any : undefined }}
+      >
+        ↻
+      </button>
+      <style jsx>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
 
       {/* Modal de creación/edición */}
       {isManager && (

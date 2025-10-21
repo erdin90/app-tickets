@@ -637,12 +637,9 @@ function resetFilters() {
     }
   }, [isTechnician, me]);
     
-  useEffect(() => {
-  if (!selectedId && items.length > 0) setSelectedId(items[0].id);
-  if (selectedId && !items.find(t => t.id === selectedId)) {
-    setSelectedId(items[0]?.id ?? null);
-  }
-}, [items, selectedId]);
+  // Eliminado: este efecto autoseleccionaba siempre el primer ticket sin respetar móvil,
+  // causando que en móvil no se muestre la lista primero. La lógica correcta ya existe
+  // más arriba y distingue entre desktop/móvil.
   /* --------- bootstrap usuario/roles/techs --------- */
   useEffect(() => {
     listTechnicians().then(({ data }) => setTechs(data));
@@ -1224,24 +1221,28 @@ function resetFilters() {
   aria-label="Listado de tickets con panel de detalle"
 >
   {/* ---------- IZQUIERDA: LISTA ---------- */}
-  <aside className="tks-list-pane">
+  <aside className="tickets-list-pane">
     <div className="tks-list-head">
       <span className="meta">Resultados: {total}</span>
     </div>
 
-    <div className="tks-list" role="listbox" aria-label="Tickets">
+  <div className="tks-list" role="listbox" aria-label="Tickets">
       {items.length === 0 && (
         <div className="meta">No hay tickets en esta vista.</div>
       )}
 
-  {items.map((tk) => {
+      {items.map((tk) => {
+        // Assignees for the chip on the right
         const assignees = (tk.assignees && tk.assignees.length)
           ? tk.assignees
           : (tk.assigned_to ? [tk.assigned_to] : []);
-        const firstAss = assignees[0];
-        const p = techs.find(x => x.id === firstAss);
+        const assignedName = assignees.length ? nameOf(assignees[0]) : 'Sin asignar';
+
+        // Creator info for left avatar/initial (fallback to assigned if creator not available)
+        const creator = techs.find(x => x.id === (tk.created_by ?? '')) || (assignees.length ? techs.find(x => x.id === assignees[0]) : undefined);
 
         const active = selectedId === tk.id;
+        const desc = (tk.description ?? '').trim();
 
         return (
           <button
@@ -1250,37 +1251,27 @@ function resetFilters() {
             role="option"
             aria-selected={active}
             className={`trow ${active ? 'is-active' : ''}`}
-            onClick={() => {
-              // Solo seleccionar; NO cambiar estado automáticamente
-              setSelectedId(tk.id);
-            }}
+            onClick={() => setSelectedId(tk.id)}
             title={tk.title}
           >
             <span className="avatar">
-              {p?.avatar_url
-                ? <img src={p.avatar_url} alt="" />
-                : (p ? (p.full_name ?? p.id).slice(0,1) : '·').toUpperCase()}
+              {creator?.avatar_url
+                ? <img src={creator.avatar_url} alt="" />
+                : (creator ? (creator.full_name ?? creator.id).slice(0,1) : '·').toUpperCase()}
             </span>
 
             <div className="trow-main">
               <div className="trow-title">{tk.title}</div>
-              <div className="trow-meta">
-                <span>#{tk.id.slice(0,6)}</span>
-                <span>{businessLabel(tk.business)}</span>
+              <div className="trow-author">{creator ? (creator.full_name ?? creator.id) : '—'}</div>
+              {desc && <div className="trow-summary">{desc}</div>}
+              <div className="trow-footer">
                 <span>{fmt(tk.created_at)}</span>
-                {tk.due_date && <span>Vence: {fmt(tk.due_date)}</span>}
+                {tk.business && <span>{businessLabel(tk.business)}</span>}
               </div>
             </div>
 
             <div className="trow-badges">
-              {/* Estado derivado por categoría (no por status crudo) */}
-              <span className={`badge ${category === 'completed' ? 'badge-closed' : category === 'new' ? 'badge-open' : category === 'overdue' ? 'badge-overdue' : 'badge-pending'}`}>
-                {category === 'completed' ? 'Completado' : category === 'new' ? 'Nuevo' : category === 'overdue' ? 'Vencido' : 'Pendiente'}
-              </span>
-
-              <span className={prioBadge(tk.priority)}>
-                Prio: {prioLabel[tk.priority as keyof typeof prioLabel]}
-              </span>
+              <span className="badge badge-assigned">{assignedName}</span>
             </div>
           </button>
         );
@@ -1289,18 +1280,39 @@ function resetFilters() {
   </aside>
 
   {/* ---------- DERECHA: DETALLE ---------- */}
-  <section ref={detailPaneRef} className="tks-detail-pane scroll-mt-16" aria-label="Detalle del ticket">
-    {isMobile && selectedId && (
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={() => setSelectedId(null)}
-        style={{ marginBottom: 8 }}
-        aria-label="Volver a la lista"
-      >
-        ← Lista
-      </button>
-    )}
+  <section ref={detailPaneRef} className="tickets-detail-pane scroll-mt-16" aria-label="Detalle del ticket">
+    {isMobile && selectedId && (() => {
+      const cat = category; // 'new' | 'pending' | 'overdue' | 'completed'
+      const map = {
+        new:       { label: 'Nuevos',      bg: '#e7f0ff', fg: '#0b4aa2', border: '#b9d2ff' },
+        pending:   { label: 'Pendientes',  bg: '#fff7ed', fg: '#9a3412', border: '#fed7aa' },
+        overdue:   { label: 'Vencidos',    bg: '#fee2e2', fg: '#991b1b', border: '#fecaca' },
+        completed: { label: 'Completados', bg: '#dcfce7', fg: '#166534', border: '#86efac' },
+      } as const;
+      const ui = map[cat];
+      return (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setSelectedId(null)}
+          style={{
+            marginBottom: 8,
+            width: '100%',
+            justifyContent: 'flex-start',
+            height: 44,
+            fontSize: 16,
+            fontWeight: 800,
+            background: ui.bg,
+            color: ui.fg,
+            borderColor: ui.border,
+          }}
+          aria-label={`Volver a la lista de ${ui.label}`}
+          title={`Volver a la lista de ${ui.label}`}
+        >
+          ← Lista de {ui.label}
+        </button>
+      );
+    })()}
 
     <div className="tks-detail">
   {/* Corregido: cierre de etiqueta <div> */}
@@ -1443,6 +1455,9 @@ function resetFilters() {
           .adv-grid { grid-template-columns: 1fr; }
           .adv-grid .actions { justify-content: stretch; flex-wrap: wrap; }
           .adv-grid .actions .btn { flex: 1 1 auto; text-align: center; }
+          /* Ensure ticket rows fit mobile width while keeping fixed height */
+          .tks-list{ align-items: stretch; }
+          .tks-list .trow{ width: 100%; max-width: 100%; height: 110px; }
           /* Keep search and + on the same line in mobile */
           .filters-row.top{ display:flex; gap:8px; }
           .filters-row.top > .input{ min-width: 0; }
@@ -1502,38 +1517,50 @@ function resetFilters() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         /* Themed list item styles for left tickets list */
+        .tks-list{ display:flex; flex-direction:column; align-items:center; }
         .tks-list .trow{
-          width: 100%;
+          width: 345px;
+          height: 110px;
+          box-sizing: border-box;
           text-align: left;
           background: transparent;
           border: 1px solid transparent;
           border-radius: 12px;
-          padding: 10px;
+          padding: 10px 12px;
           display: grid;
           grid-template-columns: 28px 1fr auto;
           align-items: center;
           gap: 10px;
-          margin: 4px 2px;
+          margin: 6px 4px;
           transition: background .15s ease, border-color .15s ease;
+          overflow: hidden;
         }
         .tks-list .trow .trow-title{ font-weight: 700; font-size: 14px; }
-        .tks-list .trow .trow-meta{ color: #6b7280; display:flex; gap:10px; font-size: 12px; }
+  .tks-list .trow .trow-meta{ color: #6b7280; display:flex; gap:10px; font-size: 12px; }
+  .tks-list .trow .trow-author{ color:#6b7280; font-size:12px; margin-top:2px; }
+  .tks-list .trow .trow-summary{ color:#6b7280; font-size:12px; margin-top:4px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis; }
+  .tks-list .trow .trow-footer{ color:#6b7280; font-size:12px; display:flex; gap:10px; margin-top:6px; }
+  .tks-list .trow .badge-assigned{ background:#eef2f6; color:#111827; border-color:#e5e7eb; }
 
-        /* Blue theme (Nuevos) */
+  /* Blue theme (Nuevos) */
         .tickets-split.theme-blue .trow:hover{ background: #e7f0ff; }
         .tickets-split.theme-blue .trow.is-active{ background: #e7f0ff; border-color: rgba(147,197,253,.66); }
+  .tickets-split.theme-blue .cat-chip{ background:#e7f0ff; color:#0b4aa2; border-color:#b9d2ff; }
 
-        /* Amber theme (Pendientes) */
+  /* Amber theme (Pendientes) */
         .tickets-split.theme-amber .trow:hover{ background: #fff7ed; }
         .tickets-split.theme-amber .trow.is-active{ background: #fff7ed; border-color: rgba(245,158,11,.45); }
+  .tickets-split.theme-amber .cat-chip{ background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
 
-        /* Red theme (Vencidos) */
+  /* Red theme (Vencidos) */
         .tickets-split.theme-red .trow:hover{ background: #fee2e2; }
         .tickets-split.theme-red .trow.is-active{ background: #fee2e2; border-color: rgba(239,68,68,.45); }
+  .tickets-split.theme-red .cat-chip{ background:#fee2e2; color:#991b1b; border-color:#fecaca; }
 
-        /* Green theme (Completados) */
+  /* Green theme (Completados) */
         .tickets-split.theme-green .trow:hover{ background: #dcfce7; }
         .tickets-split.theme-green .trow.is-active{ background: #dcfce7; border-color: rgba(134,239,172,.55); }
+  .tickets-split.theme-green .cat-chip{ background:#dcfce7; color:#166534; border-color:#86efac; }
       `}</style>
     </>
   );

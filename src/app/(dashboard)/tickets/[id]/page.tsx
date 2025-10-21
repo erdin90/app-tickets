@@ -18,7 +18,7 @@ import {
 import { STATUS_OPTIONS, type TicketStatus } from '@/lib/status';
 import type { TicketPriority } from '@/lib/priority';
 import { listTechnicians, getMyProfile, type Profile } from '@/lib/users';
-import { listComments, addComment, subscribeComments, type TicketComment } from '@/lib/comments';
+import { listComments, addComment, subscribeComments, deleteComment, type TicketComment } from '@/lib/comments';
 import { listAttachments, addAttachmentRecord, removeAttachment, publicUrl, type Attachment } from '@/lib/attachments';
 import { supabase } from '@/lib/supabase';
 
@@ -46,6 +46,8 @@ export default function TicketDetailPage() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Adjuntos
   const [files, setFiles] = useState<Attachment[]>([]);
@@ -53,6 +55,7 @@ export default function TicketDetailPage() {
   const [uploading, setUploading] = useState(false);
 
   const canManage = myRole === 'manager';
+  const isIT = myRole === 'technician' || myRole === 'it';
   const canChangeStatus =
     canManage || (me && ticket?.assigned_to && me === ticket.assigned_to) ? true : false;
 
@@ -187,6 +190,30 @@ export default function TicketDetailPage() {
     if (error) return alert('No se pudo comentar');
     setText('');
     loadComments();
+  }
+
+  async function onDeleteComment(cid: string) {
+    if (!me) return alert('No autenticado');
+    const c = comments.find(x => x.id === cid);
+    const authorId = c?.author;
+    const authorRole = c?.author_profile?.role?.toLowerCase?.();
+    const authorIsIT = authorRole === 'technician' || authorRole === 'it';
+
+    // Regla solicitada:
+    // - Manager puede eliminar cualquier comentario hecho por IT
+    // - IT puede eliminar solo sus propios comentarios
+    const isOwn = authorId === me;
+    const allowed = (canManage && authorIsIT) || (isIT && isOwn) || (canManage && isOwn);
+    if (!allowed) {
+      return alert('No tienes permiso para eliminar este comentario');
+    }
+    setDeletingId(cid);
+    const { error } = await deleteComment(cid);
+    setDeletingId(null);
+    if (error) return alert(error.message);
+    await loadComments();
+    setConfirmId(null);
+    toast.success('Comentario eliminado');
   }
 
   const BUCKET = 'ticket-files';
@@ -352,15 +379,80 @@ export default function TicketDetailPage() {
         <div style={{ display: 'grid', gap: 10, maxHeight: '40vh', overflowY: 'auto' }}>
           {comments.length === 0 && <div className="meta">Sin comentarios aún.</div>}
           {comments.map((c) => (
-            <div key={c.id} style={{ display: 'flex', gap: 10 }}>
+            <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div className="avatar">
                 {c.author_profile?.avatar_url
                   ? <img src={c.author_profile.avatar_url} alt="" />
                   : (c.author_profile?.full_name ?? '·').slice(0, 1).toUpperCase()}
               </div>
-              <div>
-                <div style={{ fontWeight: 800 }}>{c.author_profile?.full_name ?? c.author}</div>
-                <div className="meta">{fmt(c.created_at)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, position: 'relative' }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{c.author_profile?.full_name ?? c.author}</div>
+                    <div className="meta">{fmt(c.created_at)}</div>
+                  </div>
+                  {/* Botón eliminar si corresponde */}
+                  {(canManage || isIT) && (() => {
+                    const authorRole = c.author_profile?.role?.toLowerCase?.();
+                    const authorIsIT = authorRole === 'technician' || authorRole === 'it';
+                    const isOwn = c.author === me;
+                    const show = (canManage && authorIsIT) || (isIT && isOwn) || (canManage && isOwn);
+                    if (!show) return null;
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button
+                          className="btn btn-ghost"
+                          title="Eliminar comentario"
+                          aria-label="Eliminar comentario"
+                          onClick={() => setConfirmId(c.id)}
+                          style={{ height: 28, padding: '0 10px', color: 'var(--danger)' }}
+                        >
+                          Eliminar
+                        </button>
+                        {confirmId === c.id && (
+                          <div
+                            role="dialog"
+                            aria-label="Confirmar eliminación"
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'var(--panel, #fff)',
+                              border: '1px solid var(--border)',
+                              boxShadow: '0 8px 30px rgba(0,0,0,0.08)',
+                              borderRadius: 10,
+                              padding: '10px 12px',
+                              display: 'grid',
+                              gap: 8,
+                              zIndex: 10,
+                              minWidth: 240,
+                            }}
+                          >
+                            <div className="meta">Este comentario se eliminará definitivamente</div>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                              <button
+                                className="btn btn-ghost"
+                                onClick={() => setConfirmId(null)}
+                                style={{ height: 28, padding: '0 10px' }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                className="btn btn-danger"
+                                onClick={() => onDeleteComment(c.id)}
+                                disabled={deletingId === c.id}
+                                style={{ height: 28, padding: '0 10px' }}
+                              >
+                                {deletingId === c.id ? 'Eliminando…' : 'Aceptar'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
                 <div style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{c.body}</div>
               </div>
             </div>

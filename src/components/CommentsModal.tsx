@@ -1,7 +1,10 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
-import { listComments, addComment, subscribeComments, type TicketComment } from '@/lib/comments';
+import { toast } from 'sonner';
+import { listComments, addComment, subscribeComments, deleteComment, type TicketComment } from '@/lib/comments';
+import { getMyProfile } from '@/lib/users';
 
 export default function CommentsModal({
   open,
@@ -17,6 +20,9 @@ export default function CommentsModal({
   const [items, setItems] = useState<TicketComment[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [myRole, setMyRole] = useState<'manager' | 'technician' | 'it' | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function refetch() {
     if (!ticketId) return;
@@ -28,6 +34,11 @@ export default function CommentsModal({
     if (!open || !ticketId) return;
     refetch();
     const unsub = subscribeComments(ticketId, refetch);
+    getMyProfile().then(({ data }) => {
+      const rr = (data?.role || '').toLowerCase();
+      const r = rr === 'manager' || rr === 'technician' || rr === 'it' ? (rr as any) : null;
+      setMyRole(r);
+    }).catch(() => {});
     return () => unsub();
   // note: hooks deps rule disabled project-wide
   }, [open, ticketId]);
@@ -47,6 +58,25 @@ export default function CommentsModal({
     refetch();
   }
 
+  async function onDelete(id: string) {
+    if (!meId) return;
+    const c = items.find(x => x.id === id);
+    const isOwn = c?.author === meId;
+    const authorRole = c?.author_profile?.role?.toLowerCase?.();
+    const authorIsIT = authorRole === 'technician' || authorRole === 'it';
+    const isManager = myRole === 'manager';
+    const isIT = myRole === 'technician' || myRole === 'it';
+    const allowed = (isManager && authorIsIT) || (isIT && isOwn) || (isManager && isOwn);
+    if (!allowed) return alert('No tienes permiso para eliminar este comentario');
+    setDeletingId(id);
+    const { error } = await deleteComment(id);
+    setDeletingId(null);
+    if (error) return alert(error.message || 'No se pudo eliminar');
+    refetch();
+    setConfirmId(null);
+    toast.success('Comentario eliminado');
+  }
+
   if (!open) return null;
 
   return (
@@ -60,18 +90,84 @@ export default function CommentsModal({
         <div style={{ display: 'grid', gap: 12, maxHeight: '50vh', overflowY: 'auto', marginTop: 8 }}>
           {items.length === 0 && <div className="meta">Sin comentarios aún.</div>}
           {items.map((c) => (
-            <div key={c.id} style={{ display: 'flex', gap: 10 }}>
+            <div key={c.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div className="avatar">
                 {c.author_profile?.avatar_url
                   ? <img src={c.author_profile.avatar_url} alt="" />
                   : (c.author_profile?.full_name ?? '·').slice(0,1).toUpperCase()}
               </div>
-              <div>
-                <div style={{ fontWeight: 700 }}>
-                  {c.author_profile?.full_name ?? c.author}
-                </div>
-                <div className="meta" style={{ marginTop: 2 }}>
-                  {new Date(c.created_at).toLocaleString('es-ES')}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, position: 'relative' }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>
+                      {c.author_profile?.full_name ?? c.author}
+                    </div>
+                    <div className="meta" style={{ marginTop: 2 }}>
+                      {new Date(c.created_at).toLocaleString('es-ES')}
+                    </div>
+                  </div>
+                  {meId && (() => {
+                    const authorRole = c.author_profile?.role?.toLowerCase?.();
+                    const authorIsIT = authorRole === 'technician' || authorRole === 'it';
+                    const isOwn = c.author === meId;
+                    const isManager = myRole === 'manager';
+                    const isIT = myRole === 'technician' || myRole === 'it';
+                    const show = (isManager && authorIsIT) || (isIT && isOwn) || (isManager && isOwn);
+                    if (!show) return null;
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button
+                          className="btn btn-ghost"
+                          title="Eliminar comentario"
+                          aria-label="Eliminar comentario"
+                          onClick={() => setConfirmId(c.id)}
+                          style={{ height: 28, padding: '0 10px', color: 'var(--danger)' }}
+                        >
+                          Eliminar
+                        </button>
+                        {confirmId === c.id && (
+                          <div
+                            role="dialog"
+                            aria-label="Confirmar eliminación"
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'var(--panel, #fff)',
+                              border: '1px solid var(--border)',
+                              boxShadow: '0 8px 30px rgba(0,0,0,0.08)',
+                              borderRadius: 10,
+                              padding: '10px 12px',
+                              display: 'grid',
+                              gap: 8,
+                              zIndex: 10,
+                              minWidth: 240,
+                            }}
+                          >
+                            <div className="meta">Este comentario se eliminará definitivamente</div>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                              <button
+                                className="btn btn-ghost"
+                                onClick={() => setConfirmId(null)}
+                                style={{ height: 28, padding: '0 10px' }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                className="btn btn-danger"
+                                onClick={() => onDelete(c.id)}
+                                disabled={deletingId === c.id}
+                                style={{ height: 28, padding: '0 10px' }}
+                              >
+                                {deletingId === c.id ? 'Eliminando…' : 'Aceptar'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ marginTop: 6 }}>{c.body}</div>
               </div>

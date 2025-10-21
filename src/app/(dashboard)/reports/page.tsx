@@ -9,6 +9,7 @@ import HBarChart from '@/components/HBarChart';
 import DonutChart from '@/components/DonutChart';
 import { useEffect, useState } from 'react';
 import { getSummary, getTicketsByBusiness, getTicketsByPriority, getStackedByMonth, type ReportFilters, getTicketsRaw } from '@/lib/reports';
+import { getTasksComplianceByIT } from '@/lib/tasks';
 import { downloadCSV } from '@/lib/export';
 import { listTechnicians } from '@/lib/users';
 import AppModal from '@/components/AppModal';
@@ -76,6 +77,7 @@ export default function ReportsPage() {
   const [stacked, setStacked] = useState<{ labels: string[]; created: number[]; closed: number[] } | null>(null);
   const [byBusiness, setByBusiness] = useState<{ labels: string[]; data: number[] } | null>(null);
   const [byPriority, setByPriority] = useState<{ labels: string[]; data: number[] } | null>(null);
+  const [tasksByIT, setTasksByIT] = useState<Array<{ id: string; name: string; completed: number; pending: number; total: number }>>([]);
 
   useEffect(() => {
     let active = true;
@@ -108,6 +110,14 @@ export default function ReportsPage() {
         setStacked(sm);
         setByBusiness(b);
         setByPriority(p);
+        // Extra: tareas por IT en el rango, con % de cumplimiento real
+        try {
+          const comp = await getTasksComplianceByIT(
+            from ? new Date(from).toISOString().slice(0,10) : undefined,
+            to ? new Date(to).toISOString().slice(0,10) : undefined,
+          );
+          setTasksByIT(comp.map(c => ({ id: c.id, name: c.name, completed: c.completed, pending: Math.max(0, c.total - c.completed), total: c.total })));
+        } catch { /* ignore */ }
         setErr(null);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e ?? 'Error');
@@ -248,6 +258,40 @@ export default function ReportsPage() {
             </div>
           </div>
         </section>
+
+        {/* Tasks por IT (resumen simple) */}
+        {tasksByIT.length > 0 && (
+          <section className="grid" style={{ gridTemplateColumns: '1fr', gap: 12 }}>
+            <div className="ticket" style={{ padding: 16 }}>
+              <div className="section-title" style={{ margin: 0 }}>Cumplimiento de tareas por IT</div>
+              <div className="meta">Porcentaje calculado en el rango seleccionado (incluye sólo días laborables/activos por tarea).</div>
+              <div style={{ marginTop: 12, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '8px 6px' }}>IT</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px' }}>Completadas</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px' }}>Esperadas</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px' }}>% Cumplimiento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasksByIT.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ padding: '8px 6px', borderTop: '1px solid var(--border)' }}>{r.name}</td>
+                        <td style={{ padding: '8px 6px', borderTop: '1px solid var(--border)' }}>{r.completed}</td>
+                        <td style={{ padding: '8px 6px', borderTop: '1px solid var(--border)' }}>{r.total}</td>
+                        <td style={{ padding: '8px 6px', borderTop: '1px solid var(--border)' }}>
+                          {r.total > 0 ? `${Math.round((r.completed / r.total) * 100)}%` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
       {/* Modal de filtros */}
