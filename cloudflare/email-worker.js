@@ -9,6 +9,7 @@ export default {
     try {
       const subject = (message.headers.get('subject') || '').toString();
       const from = (message.headers.get('from') || '').toString();
+      const to = (message.headers.get('to') || '').toString();
       const messageId = (message.headers.get('message-id') || '').toString();
       const date = (message.headers.get('date') || '').toString();
 
@@ -44,6 +45,7 @@ export default {
         received_at: date ? new Date(date).toISOString() : new Date().toISOString(),
         source: 'email',
         message_id: messageId || null,
+        to,
       };
 
       const endpoint = env.INTAKE_ENDPOINT;
@@ -59,7 +61,15 @@ export default {
           'X-Intake-Secret': env.INTAKE_SECRET || '',
         },
         body: JSON.stringify(payload),
+        redirect: 'manual', // evita seguir redirecciones y ayuda a detectar loops
       });
+
+      // Detectar redirecciones explícitas
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers.get('location');
+        console.error('Intake redirect', resp.status, loc);
+        return;
+      }
 
       if (!resp.ok) {
         const txt = await resp.text().catch(() => '');
