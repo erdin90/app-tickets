@@ -52,33 +52,50 @@ export default {
       };
 
       const endpoint = env.INTAKE_ENDPOINT;
+      const fallback = env.FALLBACK_ENDPOINT || env.VERCEL_ENDPOINT; // opcional
       if (!endpoint) {
         console.error('Missing INTAKE_ENDPOINT');
         return;
       }
 
-      const resp = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Intake-Secret': env.INTAKE_SECRET || '',
-        },
-        body: JSON.stringify(payload),
-        redirect: 'manual', // evita seguir redirecciones y ayuda a detectar loops
-      });
+      // helper para postear con manejo de redirects y logging
+      const postIntake = async (url) => {
+        try {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Intake-Secret': env.INTAKE_SECRET || '',
+            },
+            body: JSON.stringify(payload),
+            redirect: 'manual',
+          });
 
-      // Detectar redirecciones explícitas
-      if (resp.status >= 300 && resp.status < 400) {
-        const loc = resp.headers.get('location');
-        console.error('Intake redirect', resp.status, loc);
-        return;
-      }
+          if (resp.status >= 300 && resp.status < 400) {
+            const loc = resp.headers.get('location');
+            console.error('Intake redirect', resp.status, loc);
+            return { ok: false, status: resp.status, redirectedTo: loc };
+          }
+          if (!resp.ok) {
+            const txt = await resp.text().catch(() => '');
+            console.error('Intake failed', resp.status, txt);
+            return { ok: false, status: resp.status, body: txt };
+          }
+          console.log('Intake ok', requester_email, messageId, resp.status);
+          return { ok: true, status: resp.status };
+        } catch (err) {
+          console.error('Intake error', url, err?.message || String(err));
+          return { ok: false, error: err };
+        }
+      };
 
-      if (!resp.ok) {
-        const txt = await resp.text().catch(() => '');
-        console.error('Intake failed', resp.status, txt);
-      } else {
-        console.log('Intake ok', requester_email, messageId, resp.status);
+      // 1er intento al dominio principal (it.paqva.com)
+      let result = await postIntake(endpoint);
+
+      // Si falló por redirect o error y tenemos fallback, reintenta directo al dominio de Vercel
+      if (!result.ok && fallback) {
+        console.warn('Retrying intake via FALLBACK_ENDPOINT');
+        await postIntake(fallback);
       }
     } catch (err) {
       console.error('Email worker error', err);
