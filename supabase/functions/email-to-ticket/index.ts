@@ -43,7 +43,12 @@ serve(async (req) => {
 
     // 2) Parsear payload
     const p = JSON.parse(raw) as InPayload;
-    const requesterEmail = /<([^>]+)>/.exec(p.from)?.[1] || p.from;
+  const requesterEmail = /<([^>]+)>/.exec(p.from)?.[1] || p.from;
+  // Derivar negocio por dominio de correo del remitente
+  const domain = requesterEmail?.split('@')[1]?.toLowerCase() ?? '';
+  let business: string | null = null;
+  if (domain.endsWith('sevenlogik.net')) business = 'SEVENLOGIK';
+  else if (domain.endsWith('gallardolawyers.com')) business = 'GALLARDO';
     const title = (p.subject || "(sin asunto)").slice(0, 160);
     const description = (p.text || "").slice(0, 12000);
 
@@ -61,6 +66,7 @@ serve(async (req) => {
         raw_from: p.from,
         raw_to: p.to,
         received_at: p.received_at || new Date().toISOString(),
+        business,
         status: "open",
       })
       .select()
