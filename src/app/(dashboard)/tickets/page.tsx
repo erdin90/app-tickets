@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import TicketsShell from "@/components/shell/TicketsShell";
 import type { Ticket } from "@/lib/tickets";
 import { listTicketsMeta as listTickets, subscribeTickets } from "@/lib/tickets";
+import { Mail as MailIcon } from "lucide-react";
 import { statusLabel, type TicketStatus } from "@/lib/status";
 
 function Badge({ children, color }: { children: React.ReactNode; color: "amber" | "green" | "red" | "blue" }) {
@@ -63,7 +64,12 @@ function TicketList({ items, onSelect, selectedId, category }:{ items: Ticket[];
               <span className="text-[11px] text-neutral-500">Vence {new Date(t.due_date).toLocaleDateString("es-ES", { day: '2-digit', month: 'short'})}</span>
             )}
           </div>
-          <div className="mt-1 text-[13px] font-medium text-neutral-900 truncate">{t.title}</div>
+          <div className="mt-1 text-[13px] font-medium text-neutral-900 truncate flex items-center gap-1">
+            {(t as any)?.source === 'email' && (
+              <MailIcon className="w-[14px] h-[14px] text-neutral-700/90" aria-hidden />
+            )}
+            <span className="truncate">{t.title}</span>
+          </div>
           <div className="text-xs text-neutral-500 truncate">{t.description ?? ''}</div>
         </button>
       ))}
@@ -104,7 +110,13 @@ function Detail({ t, headingRef }: { t: Ticket | null; headingRef?: React.RefObj
       )}
 
       <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-neutral-600">
-        <div><span className="text-neutral-500">Creado:</span> {fmt(t.created_at)}</div>
+        <div className="flex items-center gap-1">
+          <span className="text-neutral-500">Creado:</span>
+          {((t as any)?.source === 'email') && <MailIcon className="w-[12px] h-[12px] text-neutral-700/90" aria-label="Desde email" />}
+          <span className="truncate">
+            {((t as any)?.source === 'email' ? (((t as any)?.requester_email) || ((t as any)?.raw_from) || 'correo') + ' • ' : '')}{fmt(t.created_at)}
+          </span>
+        </div>
         <div><span className="text-neutral-500">Vence:</span> {fmt(t.due_date)}</div>
         <div><span className="text-neutral-500">Completado:</span> {fmt(t.completed_at)}</div>
       </div>

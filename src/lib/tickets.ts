@@ -16,6 +16,10 @@ export type Ticket = {
   created_at: string;
   completed_at: string | null;
   business?: string | null;
+  // Origen del ticket (ej: 'email') y correo del solicitante cuando viene por email
+  source?: string | null;
+  requester_email?: string | null;
+  raw_from?: string | null;
 
   // 👇 nuevos metadatos de comentarios
   comments_count?: number;

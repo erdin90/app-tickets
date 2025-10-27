@@ -2,7 +2,7 @@
 /* note: rule disabled project-wide; removing file-level disable */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { User as UserIcon } from 'lucide-react';
+import { User as UserIcon, Mail as MailIcon } from 'lucide-react';
 
 import AuthGuard from '../../../components/AuthGuard';
 import PageBar from '@/components/PageBar';
@@ -221,7 +221,12 @@ function DashboardInner() {
               {tk.description && (
                 <p style={{ marginTop: 10, color: '#444', whiteSpace: 'pre-wrap' }}>{tk.description}</p>
               )}
-              <div style={{ marginTop: 12, color: '#666', fontSize: 13 }}>Creado: {fmt(tk.created_at)}</div>
+              <div style={{ marginTop: 12, color: '#666', fontSize: 13, display:'flex', alignItems:'center', gap:8 }}>
+                {tk.source === 'email' && <MailIcon style={{ width:14, height:14, opacity:.85 }} aria-label="Desde email" />}
+                <span>
+                  Creado: {tk.source === 'email' ? ((tk as any).requester_email || (tk as any).raw_from || 'correo') + ' • ' : ''}{fmt(tk.created_at)}
+                </span>
+              </div>
             </div>
 
             {/* Derecha: solo valores (sin etiquetas) */}
@@ -1306,9 +1311,12 @@ function resetFilters() {
             </span>
 
             <div className="trow-main">
-              <div className="trow-title">{tk.title}</div>
+              <div className="trow-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                {tk.source === 'email' && <MailIcon style={{ width:14, height:14, opacity:.9 }} aria-hidden="true" />}
+                <span>{tk.title}</span>
+              </div>
               {/* Debajo del título: nombre del creador (user o manager) */}
-              <div className="trow-author">{creatorProfile ? (creatorProfile.full_name ?? creatorProfile.id) : '—'}</div>
+              <div className="trow-author">{tk.source === 'email' ? ((tk as any).requester_email || (tk as any).raw_from || '—') : (creatorProfile ? (creatorProfile.full_name ?? creatorProfile.id) : '—')}</div>
               {desc && <div className="trow-summary">{desc}</div>}
               <div className="trow-footer">
                 <span>{fmt(tk.created_at)}</span>
