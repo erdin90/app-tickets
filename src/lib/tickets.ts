@@ -133,6 +133,22 @@ export async function listTickets(params: ListParams) {
     tickets.forEach(t => { t.assignees = t.assigned_to ? [t.assigned_to] : []; });
   }
 
+  // ---- Derivar negocio por dominio si viene por email y no hay business
+  const deriveBiz = (email?: string | null): string | null => {
+    if (!email) return null;
+    const at = email.split('@')[1]?.toLowerCase() ?? '';
+    if (at.endsWith('sevenlogik.net')) return 'SEVENLOGIK';
+    if (at.endsWith('gallardolawyers.com')) return 'GALLARDO';
+    return null;
+  };
+
+  tickets.forEach(t => {
+    if ((t as any).source === 'email' && !t.business) {
+      const biz = deriveBiz((t as any).requester_email ?? (t as any).raw_from ?? null);
+      if (biz) t.business = biz as any;
+    }
+  });
+
   // ---- metadatos de comentarios (conteo + última fecha) por ticket
   // Usa agregaciones PostgREST: count:id, max:created_at y group(ticket_id)
   // ---- metadatos de comentarios (conteo + última fecha) por ticket
@@ -296,6 +312,23 @@ export async function listTicketsMeta(params: ListParams) {
   } catch (_) {
     // ignore enrichment failure
   }
+
+  // ---- Derivar negocio por dominio si falta (tickets desde vista)
+  const deriveBiz = (email?: string | null): string | null => {
+    if (!email) return null;
+    const at = email.split('@')[1]?.toLowerCase() ?? '';
+    if (at.endsWith('sevenlogik.net')) return 'SEVENLOGIK';
+    if (at.endsWith('gallardolawyers.com')) return 'GALLARDO';
+    return null;
+  };
+
+  tickets.forEach(t => {
+    if ((t as any).source === 'email' && !t.business) {
+      const email = (t as any).requester_email ?? (t as any).raw_from ?? null;
+      const biz = deriveBiz(email);
+      if (biz) t.business = biz as any;
+    }
+  });
 
   // ---- filtro final por usuario (si corresponde)
   let finalTickets = tickets;
