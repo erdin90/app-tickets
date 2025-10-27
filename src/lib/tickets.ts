@@ -265,6 +265,38 @@ export async function listTicketsMeta(params: ListParams) {
     tickets.forEach(t => { t.comments_count = 0; t.last_comment_at = null; });
   }
 
+  // ---- enriquecimiento: traer requester_email/raw_from desde tickets base si faltan en la vista
+  try {
+    const emailIds = ids.filter(id => {
+      const t = tickets.find(x => x.id === id);
+      return t && (t.source === 'email');
+    });
+    if (emailIds.length) {
+      const { data: enrichRows, error: enrichErr } = await supabase
+        .from('tickets')
+        .select('id, requester_email, raw_from')
+        .in('id', emailIds);
+      if (!enrichErr && enrichRows?.length) {
+        const emap = new Map<string, { requester_email: string | null; raw_from: string | null }>();
+        for (const r of enrichRows as Array<{ id: string; requester_email: string | null; raw_from: string | null }>) {
+          emap.set(r.id, { requester_email: r.requester_email ?? null, raw_from: r.raw_from ?? null });
+        }
+        tickets.forEach(t => {
+          if (t.source === 'email') {
+            const e = emap.get(t.id);
+            if (e) {
+              // solo setear si viene vacío para no pisar valores válidos
+              if (t.requester_email == null) t.requester_email = e.requester_email ?? null;
+              if (t.raw_from == null) t.raw_from = e.raw_from ?? null;
+            }
+          }
+        });
+      }
+    }
+  } catch (_) {
+    // ignore enrichment failure
+  }
+
   // ---- filtro final por usuario (si corresponde)
   let finalTickets = tickets;
   if (doClientFilterByUser && assignedUserId) {
