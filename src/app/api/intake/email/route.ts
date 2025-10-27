@@ -59,10 +59,17 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    try { console.log('intake: POST hit'); } catch {}
     // 1) Auth by shared secret
     const intakeSecret = process.env.INTAKE_SECRET || '';
     const headerSecret = request.headers.get('x-intake-secret') || request.headers.get('X-Intake-Secret') || '';
     if (!intakeSecret || headerSecret !== intakeSecret) {
+      try {
+        console.warn('intake: unauthorized', {
+          hasEnv: Boolean(intakeSecret),
+          provided: headerSecret ? 'yes' : 'no',
+        });
+      } catch {}
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -71,6 +78,7 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch {
+      try { console.error('intake: invalid json'); } catch {}
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
@@ -97,6 +105,7 @@ export async function POST(request: Request) {
     const messageId = body.message_id?.trim() || null;
 
     if (!requester_email) {
+      try { console.warn('intake: missing requester_email'); } catch {}
       return NextResponse.json({ error: 'requester_email required' }, { status: 400 });
     }
 

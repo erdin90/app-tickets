@@ -13,6 +13,9 @@ export default {
       const messageId = (message.headers.get('message-id') || '').toString();
       const date = (message.headers.get('date') || '').toString();
 
+      // Basic trace to confirm the Worker is being invoked by Email Routing
+      try { console.log('worker: email received', { subject, from, to, messageId }); } catch (_) {}
+
       // Extract email + optional display name
       const m = from.match(/^(?:\"?([^"<]+)\"?\s*)?<([^>]+)>$/);
       const requester_email = (m?.[2] || from).trim().toLowerCase();
@@ -75,7 +78,7 @@ export default {
         const txt = await resp.text().catch(() => '');
         console.error('Intake failed', resp.status, txt);
       } else {
-        console.log('Intake ok', requester_email, messageId);
+        console.log('Intake ok', requester_email, messageId, resp.status);
       }
     } catch (err) {
       console.error('Email worker error', err);
