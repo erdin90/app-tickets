@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["deno.window", "dom"]
+    "lib": ["deno.window", "deno.ns", "dom"]
   },
   "imports": {
     "supabase-js": "npm:@supabase/supabase-js@2.57.4"
