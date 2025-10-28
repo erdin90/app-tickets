@@ -1,3 +1,4 @@
+/// <reference lib="deno.ns" />
 // supabase/functions/on-comment-created/index.ts
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
@@ -21,9 +22,18 @@ type WebhookBody = {
 serve(async (req) => {
   try {
     // --- secretos ---
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE")!;
-    const SEND_EMAIL_WORKER_URL = Deno.env.get("SEND_EMAIL_WORKER_URL")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!; // inyectado por la plataforma
+    // admitir ambas convenciones de secreto para evitar faltantes
+    const SERVICE_ROLE = Deno.env.get("SERVICE_ROLE") ?? Deno.env.get("SUPABASE_SERVICE_ROLE") ?? "";
+    const SEND_EMAIL_WORKER_URL = Deno.env.get("SEND_EMAIL_WORKER_URL") ?? Deno.env.get("EMAIL_OUT_WORKER_URL") ?? "";
+    if (!SERVICE_ROLE) {
+      console.error("Missing SERVICE_ROLE/SUPABASE_SERVICE_ROLE secret");
+      return new Response("missing service role", { status: 500 });
+    }
+    if (!SEND_EMAIL_WORKER_URL) {
+      console.error("Missing SEND_EMAIL_WORKER_URL secret");
+      return new Response("missing worker url", { status: 500 });
+    }
 
     // --- leer payload del webhook ---
     const body = (await req.json()) as WebhookBody;
@@ -35,7 +45,7 @@ serve(async (req) => {
     if (!commentText) return new Response("empty body", { status: 200 });
 
     // --- obtener datos del ticket (título y correo del solicitante) ---
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: ticket, error: tErr } = await supabase
       .from("tickets")
       .select("id, title, requester_email")
