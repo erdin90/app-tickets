@@ -1,0 +1,11 @@
+[functions]
+
+[functions.on-comment-created]
+# Database Webhooks no envían Authorization por defecto.
+# Desactivamos la verificación JWT SOLO para esta función.
+verify_jwt = false
+
+[functions.on-ticket-status]
+# Database Webhooks (UPDATE on tickets) tampoco envían Authorization.
+# Desactivamos la verificación JWT SOLO para esta función.
+verify_jwt = false
