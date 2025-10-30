@@ -1,0 +1,12 @@
+name = "tickets-outbound-mail"
+main = "refs/outbound-mail-worker.js"
+compatibility_date = "2025-10-29"
+compatibility_flags = []
+workers_dev = true
+
+[vars]
+FROM = "Soporte <soporte@paqva.com>"
+REPLY_TO = "soporte@paqva.com"
+AUTH_SECRET = "replace-with-random"
+# Optional, for local browser testing CORS
+# ALLOW_ORIGIN = "https://it.paqva.com"
