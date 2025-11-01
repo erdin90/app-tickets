@@ -12,6 +12,7 @@
 // - multipart/form-data (SendGrid inbound): campos text/html por separado; sin adjuntos en esta ruta.
 
 import { createClient } from "npm:@supabase/supabase-js";
+import PostalMime from "npm:postal-mime@1.3.2";
 
 type ParsedInbound = {
   from: string;
@@ -20,6 +21,7 @@ type ParsedInbound = {
   subject: string;
   text?: string;
   html?: string;
+  rawBase64?: string; // alternativa: mensaje MIME completo
   "message-id"?: string; // sendgrid
   "Message-Id"?: string; // mailgun
   "MessageID"?: string;  // postmark
@@ -97,8 +99,7 @@ Deno.serve(async (req: Request) => {
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
 
-      // SendGrid Inbound Parse:
-      // keys comunes: from, to, cc, subject, text, html, message-id, date
+      // Caso A: pasarelas que mandan partes ya separadas (text/html)
       data = {
         from: String(form.get("from") || ""),
         to: String(form.get("to") || ""),
@@ -108,11 +109,34 @@ Deno.serve(async (req: Request) => {
         html: form.get("html") ? String(form.get("html")) : undefined,
         "message-id": form.get("message-id") ? String(form.get("message-id")) : undefined,
         date: form.get("date") ? String(form.get("date")) : undefined,
-      };
+      } as ParsedInbound;
 
-      // Nota: Si activas "POST the raw, full MIME message", el campo es "email"; aquí
-      // estamos usando el parseo estándar (text/html separadas). Adjuntos: form.get('attachment1'|...)
-      // Si quieres guardar adjuntos en Storage, puedo pasarte snippet adicional.
+      // Caso B: algunas pasarelas permiten "POST the raw, full MIME message" en el campo 'email'
+      const rawMimeFile = form.get("email");
+      if (rawMimeFile && typeof rawMimeFile !== "string") {
+        const arrBuf = await (rawMimeFile as File).arrayBuffer();
+        const rawU8 = new Uint8Array(arrBuf);
+        // parsea MIME crudo
+        try {
+          const parser = new PostalMime();
+          const parsed = await parser.parse(rawU8);
+          data.from = data.from || parsed.from?.text || "";
+          data.to = data.to || parsed.to?.text || "";
+          data.subject = data.subject || parsed.subject || "(sin asunto)";
+          data.text = data.text || parsed.text || undefined;
+          data.html = data.html || parsed.html || undefined;
+          if (!data.attachments && parsed.attachments?.length) {
+            data.attachments = parsed.attachments.map(a => ({
+              filename: a.filename || "archivo",
+              contentType: a.mimeType || "application/octet-stream",
+              size: a.content?.length || 0,
+              contentBase64: a.content ? btoa(String.fromCharCode(...a.content)) : undefined,
+            }));
+          }
+        } catch (e) {
+          console.error("postal-mime parse (form.email) error", e);
+        }
+      }
     } else if (contentType.includes("application/json")) {
       // Cloudflare Email Worker o pasarelas JSON
       data = await req.json();
@@ -130,10 +154,28 @@ Deno.serve(async (req: Request) => {
     const when = firstNonEmpty(data.date, data.Date);
     const email_date = when ? new Date(when) : new Date();
 
-    // Cuerpo: prioriza text; cae a html->texto
-    const bodyText =
-      firstNonEmpty(data.text) ??
-      (data.html ? stripHtml(toSafeHtml(data.html)) : "(sin contenido)");
+    // Si llega rawBase64, parsea MIME con PostalMime
+    let bodyText = firstNonEmpty(data.text) ?? null;
+    if (!bodyText && data.rawBase64) {
+      try {
+        const bin = Uint8Array.from(atob(data.rawBase64), c => c.charCodeAt(0));
+        const parser = new PostalMime();
+        const parsed = await parser.parse(bin);
+        bodyText = firstNonEmpty(parsed.text) ?? (parsed.html ? stripHtml(toSafeHtml(parsed.html)) : null);
+        // Adjuntos: si no llegaron por "attachments" pero sí en raw, mapéalos
+        if (!data.attachments && parsed.attachments?.length) {
+          (data as any).attachments = parsed.attachments.map(a => ({
+            filename: a.filename || "archivo",
+            contentType: a.mimeType || "application/octet-stream",
+            size: a.content?.length || 0,
+            contentBase64: a.content ? btoa(String.fromCharCode(...a.content)) : undefined,
+          }));
+        }
+      } catch (e) {
+        console.error("postal-mime parse error", e);
+      }
+    }
+    if (!bodyText) bodyText = data.html ? stripHtml(toSafeHtml(data.html!)) : "(sin contenido)";
      const detectedBusiness = guessBusinessFromEmail(email_from);
     // Inserta ticket
     const { data: inserted, error } = await supabase
