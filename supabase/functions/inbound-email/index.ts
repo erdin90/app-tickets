@@ -1,6 +1,16 @@
+// @ts-nocheck
 // supabase/functions/inbound-email/index.ts
+// Recibe correos desde un Email Worker (Cloudflare) o pasarelas como SendGrid/Mailgun
+// y crea tickets; si hay adjuntos, los sube al bucket de Storage por ticket.
+//
+// Formatos soportados:
+// - JSON (desde Cloudflare Email Worker propuesto):
+//   {
+//     from, to, subject, text?, html?,
+//     attachments: [{ filename, contentType, size, contentBase64 }]
+//   }
+// - multipart/form-data (SendGrid inbound): campos text/html por separado; sin adjuntos en esta ruta.
 
-// Habilita soporte npm en Deno (ya viene en funciones de Supabase)
 import { createClient } from "npm:@supabase/supabase-js";
 
 type ParsedInbound = {
@@ -15,6 +25,12 @@ type ParsedInbound = {
   "MessageID"?: string;  // postmark
   date?: string;         // sendgrid/mailgun
   Date?: string;         // postmark
+  attachments?: Array<{
+    filename?: string;
+    contentType?: string;
+    size?: number;
+    contentBase64?: string; // base64 del binario
+  }>;
 };
 
 const DOMAIN_BUSINESS_MAP: Record<string, string> = {
@@ -55,16 +71,17 @@ function guessBusinessFromEmail(rawFrom: string): string | null {
 
 Deno.serve(async (req: Request) => {
   try {
-    // 1) Protege el endpoint con un secret en la URL: ?secret=XYZ
+    // 1) Protege el endpoint con un secret: acepta header x-intake-secret o query ?secret=
     const url = new URL(req.url);
     const urlSecret = url.searchParams.get("secret");
+    const hdrSecret = req.headers.get("x-intake-secret");
     const EXPECTED = Deno.env.get("INBOUND_SECRET");
-    if (!EXPECTED || urlSecret !== EXPECTED) {
+    if (!EXPECTED || (urlSecret !== EXPECTED && hdrSecret !== EXPECTED)) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || Deno.env.get("SUPABASE_PROJECT_URL");
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE") || Deno.env.get("SERVICE_ROLE");
     const DEFAULT_OWNER = Deno.env.get("DEFAULT_TICKET_OWNER_UUID")!;
     if (!SUPABASE_URL || !SERVICE_ROLE || !DEFAULT_OWNER) {
       return new Response(JSON.stringify({ error: "Missing env vars" }), { status: 500 });
@@ -97,7 +114,7 @@ Deno.serve(async (req: Request) => {
       // estamos usando el parseo estándar (text/html separadas). Adjuntos: form.get('attachment1'|...)
       // Si quieres guardar adjuntos en Storage, puedo pasarte snippet adicional.
     } else if (contentType.includes("application/json")) {
-      // Por si usas Postmark/Mailgun Inbound (JSON)
+      // Cloudflare Email Worker o pasarelas JSON
       data = await req.json();
     } else {
       return new Response(JSON.stringify({ error: "Unsupported content-type" }), { status: 415 });
@@ -144,11 +161,60 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    return new Response(JSON.stringify({ ok: true, ticket_id: inserted?.[0]?.id ?? null }), {
+    const ticketId = inserted?.[0]?.id ?? null;
+
+    // 2) Adjuntos: si llegan en JSON (attachments[]), subir a Storage
+    try {
+      const atts = (data as any)?.attachments as ParsedInbound["attachments"] | undefined;
+      if (ticketId && Array.isArray(atts) && atts.length > 0) {
+        const bucket = "attachments"; // consistente con src/lib/storage.ts
+
+        // Intentar crear bucket si no existe (idempotente; ignora error si ya existe)
+        try {
+          await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+            method: "POST",
+            headers: {
+              apikey: SERVICE_ROLE,
+              authorization: `Bearer ${SERVICE_ROLE}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ name: bucket, public: false }),
+          });
+        } catch (_) {}
+
+        function b64ToUint8(b64: string) {
+          const bin = atob(b64);
+          const out = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+          return out;
+        }
+        function sanitize(name: string) {
+          return (name || "archivo").replace(/[^\w.\-]+/g, "_").slice(0, 180);
+        }
+
+        for (const a of atts) {
+          if (!a?.contentBase64) continue;
+          const bytes = b64ToUint8(a.contentBase64);
+          const filename = sanitize(a.filename || "archivo");
+          const contentType = a.contentType || "application/octet-stream";
+          const path = `${ticketId}/${crypto.randomUUID()}_${filename}`;
+
+          const { error: upErr } = await supabase.storage
+            .from(bucket)
+            .upload(path, bytes, { contentType, upsert: true });
+          if (upErr) console.error("upload attachment error", upErr);
+        }
+      }
+    } catch (e) {
+      console.error("attachments processing error", e);
+    }
+
+    return new Response(JSON.stringify({ ok: true, ticket_id: ticketId }), {
       headers: { "content-type": "application/json" },
     });
   } catch (e) {
     console.error("Handler error:", e);
-    return new Response(JSON.stringify({ error: e?.message ?? "unknown" }), { status: 500 });
+    const msg = (e && (e as any).message) ? (e as any).message : "unknown";
+    return new Response(JSON.stringify({ error: msg }), { status: 500 });
   }
 });

@@ -9,6 +9,7 @@ import { getTicket, type Ticket } from '@/lib/tickets';
 import { businessLabel } from '@/lib/businesses';
 import { listTechnicians, type Profile } from '@/lib/users';
 import { supabase } from '@/lib/supabase';
+import * as stor from '@/lib/storage';
 
 /* Helpers UI */
 const fmt = (ts?: string) =>
@@ -48,6 +49,7 @@ function PreviewInner() {
 
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [techs, setTechs] = useState<Profile[]>([]);
+  const [files, setFiles] = useState<Array<{ name: string; path: string; url: string }>>([]);
 
   useEffect(() => { listTechnicians().then(({ data }) => setTechs(data ?? [])); }, []);
 
@@ -70,6 +72,14 @@ function PreviewInner() {
         const ids = (links?.map(l => l.user_id) ?? []);
         if (ids.length === 0 && data.assigned_to) ids.push(data.assigned_to);
         setAssigneeIds(Array.from(new Set(ids)));
+
+        // Cargar adjuntos desde el bucket "attachments" usando el ticket.id
+        try {
+          const list = await stor.listAttachments(String(data.id));
+          setFiles(list);
+        } catch (_) {
+          setFiles([]);
+        }
       } catch (e: any) {
         setError(e?.message || 'No se pudo cargar el ticket');
       } finally {
@@ -141,6 +151,29 @@ function PreviewInner() {
           )}
         </div>
       </article>
+
+      {/* Adjuntos (si los hay) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <h3 style={{ margin: 0, fontSize: 16 }}>Adjuntos</h3>
+        </div>
+        <div className="card-body">
+          {files.length === 0 ? (
+            <div className="meta">Sin adjuntos.</div>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+              {files.map(f => (
+                <li key={f.path} className="file-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="icon" aria-hidden>📎</span>
+                  <a href={f.url} target="_blank" rel="noreferrer" className="link">
+                    {f.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
